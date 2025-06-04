@@ -1,4 +1,12 @@
 import os
+import argparse
+
+# Try to import pyperclip to enable clipboard copy
+try:
+    import pyperclip
+    clipboard_available = True
+except ImportError:
+    clipboard_available = False
 
 def generate_filtered_tree(path, exclude_dirs=None, exclude_files=None):
     """
@@ -52,15 +60,30 @@ def generate_filtered_tree(path, exclude_dirs=None, exclude_files=None):
 
 # Example usage
 if __name__ == "__main__":
-    project_path = input("Enter the path to your project: ").strip()
+    parser = argparse.ArgumentParser(description="Generate a filtered directory tree.")
+    parser.add_argument("path", type=str, help="Path to the project directory.")
+    args = parser.parse_args()
+
+    project_path = args.path
     if not os.path.isdir(project_path):
         print("Invalid directory path.")
-    else:
-        tree = generate_filtered_tree(project_path)
+        raise SystemExit(1)
 
-        # Save to file
-        output_file = os.path.join(project_path, "project_tree.txt")
+    tree = generate_filtered_tree(project_path)
+
+    copied = False
+    if clipboard_available:
+        try:
+            pyperclip.copy(tree)
+            print("Directory tree copied to clipboard.")
+            copied = True
+        except Exception as e:
+            print(f"Failed to copy to clipboard: {e}")
+
+    if not copied:
+        base_name = os.path.basename(os.path.abspath(os.path.normpath(project_path))) + ".txt"
+        output_dir = os.path.dirname(__file__)
+        output_file = os.path.join(output_dir, base_name)
         with open(output_file, "w", encoding="utf-8") as f:
             f.write(tree)
-
         print(f"Directory tree saved to: {output_file}")
