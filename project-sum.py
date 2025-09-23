@@ -82,8 +82,8 @@ def summarize_project_code(base_path, extensions):
     """
     output_parts = []
     # Directories to exclude (case-insensitive)
-    exclude_dirs = {"bin", "obj", "resources", "assets"}
-    auto_generated_project_suffixes = {".droid", ".winui"}
+    exclude_dirs = {"bin", "obj", "resources", "assets", "migrations"}
+    auto_generated_project_suffixes = {".winui", ".tests"}
 
     # Walk through the directory recursively
     for root, dirs, files in os.walk(base_path):
