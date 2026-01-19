@@ -180,7 +180,7 @@ def summarize_project_code(base_path: str, extensions, normalize_mode: str, extr
     # Lower-cased names for case-insensitive filtering
     exclude_dirs = {
         "bin", "obj", "resources", "assets", "apim", "apiops", "management-api",
-        "attachments", "employee-masterdata", "example-integration", "configurations",
+        "attachments", "employee-masterdata", "example-integration",
         "payroll-mock", "functions.policymanagement.unittests", "functions.tenantmanagement.unittests", "migrations",
         "reporting", "decorator", "client", ".git", ".vscode", ".idea", ".vs", "venv", ".venv", "node_modules", 
         ".node_modules", ".angular"
