@@ -40,22 +40,30 @@ This script recursively collects files of specified extensions (e.g., `.cs`, `.p
 ### How It Works
 
 - Recursively searches through all folders, skipping certain generated directories (e.g., `bin`, `obj`, `Resources`, `Assets`, etc.).
+- You can add extra directory names to exclude via `--exclude` (case-insensitive).
 - Processes files matching the specified extensions (e.g., `.cs`, `.py`) and applies file-specific cleanup:
   - **.cs files**: Removes all lines starting with `using` and deletes any empty lines before the first occurrence of a line starting with `namespace`.
+- Applies Unicode normalization (default: `basic`) to avoid hidden characters from breaking summaries.
 - Outputs the aggregated result to the console and copies it to the clipboard if the `pyperclip` module is available.
 
 ### Usage
 
 1. **Run the script**:
    ```bash
-   python project-sum.py <path> <extension1> [<extension2> ...]
+   python project-sum.py <path> <extension1> [<extension2> ...] [--exclude <dir1> <dir2> ...] [--normalize none|basic|ascii] [-v]
    ```
    - **<path>**: The base folder to search through (e.g., the root directory of a .NET solution).
    - **<extension1> [<extension2> ...]**: The file types you want to process (e.g., `.cs`, `.py`).
+   - **--exclude**: Additional directory names to skip (case-insensitive). Example: `--exclude build dist`.
+   - **--normalize**: Text cleanup mode:
+     - `none`: no normalization
+     - `basic` (default): safe cleanup (NBSP/ZWSP/soft-hyphen etc.)
+     - `ascii`: additionally replaces smart quotes/dashes/ellipsis
+   - **-v / --verbose**: Enable debug logging.
    
 2. **Example**:  
    ```bash
-   python project-sum.py "C:/Projects/MySolution" .cs .py
+   python project-sum.py "C:/Projects/MySolution" .cs .py --exclude build dist --normalize basic
    ```
    
 3. **Output**:  

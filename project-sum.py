@@ -169,7 +169,7 @@ def clean_code(file_path: str, extension: str, normalize_mode: str) -> Optional[
 # processes files with the given extensions and aggregates the result.
 # Uses robust decoding and normalization to avoid crashes on mixed encodings.
 # </summary>
-def summarize_project_code(base_path: str, extensions, normalize_mode: str) -> str:
+def summarize_project_code(base_path: str, extensions, normalize_mode: str, extra_exclude_dirs=None) -> str:
     """
     Recursively traverses the base_path directory, processes files that match the given extensions,
     cleans their content based on file type-specific rules, and aggregates them into one output string.
@@ -185,6 +185,8 @@ def summarize_project_code(base_path: str, extensions, normalize_mode: str) -> s
         "reporting", "decorator", "client", ".git", ".vscode", ".idea", ".vs", "venv", ".venv", "node_modules", 
         ".node_modules", ".angular"
     }
+    if extra_exclude_dirs:
+        exclude_dirs.update(d.strip().lower() for d in extra_exclude_dirs if d.strip())
     auto_generated_project_suffixes = {".droid", ".winui", ".unittests", ".tests"}
 
     # Walk through the directory recursively
@@ -230,6 +232,8 @@ def main():
                              "'none' = disabled, "
                              "'basic' = safe cleanup (NBSP/ZWSP/soft-hyphen etc.), "
                              "'ascii' = also replace smart quotes/dashes/ellipsis.")
+    parser.add_argument("--exclude", nargs="*", default=[],
+                        help="Additional directory names to exclude (case-insensitive).")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable debug logging.")
     args = parser.parse_args()
 
@@ -248,7 +252,7 @@ def main():
         sys.exit(1)
 
     logging.info(f"Processing files in directory: {base_path}")
-    output = summarize_project_code(base_path, extensions, normalize_mode)
+    output = summarize_project_code(base_path, extensions, normalize_mode, args.exclude)
 
     if not output.strip():
         logging.info("No files were processed. Please check the provided extensions or the directory content.")
