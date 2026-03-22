@@ -9,6 +9,7 @@ video download. Use --playlist to download an actual playlist.
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 import importlib.util
 import os
 import re
@@ -63,6 +64,52 @@ class SuccessfulVideoCounter:
 
     def mark_successful_video(self) -> None:
         self.successful_videos += 1
+
+
+@dataclass
+class DownloadTelemetry:
+    invalid_cookie_warnings: int = 0
+    auth_required_errors: int = 0
+    bot_challenge_errors: int = 0
+    successful_videos: int = 0
+
+    @property
+    def has_stale_cookie_auth_failures(self) -> bool:
+        return self.invalid_cookie_warnings > 0 and self.auth_required_errors > 0
+
+
+@dataclass
+class DownloadResult:
+    exit_code: int
+    telemetry: DownloadTelemetry
+
+
+class YtDlpLogger:
+    def __init__(self, telemetry: DownloadTelemetry) -> None:
+        self.telemetry = telemetry
+        self._printed_invalid_cookie_warning = False
+
+    def debug(self, message: str) -> None:
+        return
+
+    def warning(self, message: str) -> None:
+        normalized = normalize_message(message)
+        if is_invalid_youtube_cookie_warning(normalized):
+            self.telemetry.invalid_cookie_warnings += 1
+            if self._printed_invalid_cookie_warning:
+                return
+            self._printed_invalid_cookie_warning = True
+
+        print(f"WARNING: {message}", file=sys.stderr)
+
+    def error(self, message: str) -> None:
+        normalized = normalize_message(message)
+        if is_auth_required_video_error(normalized):
+            self.telemetry.auth_required_errors += 1
+        if is_bot_challenge_error(normalized):
+            self.telemetry.bot_challenge_errors += 1
+
+        print(f"ERROR: {message}", file=sys.stderr)
 
 
 def parse_args() -> argparse.Namespace:
@@ -487,14 +534,32 @@ def resolve_download_mode(url: str, requested_download_video: bool | None) -> bo
     return False
 
 
+def normalize_message(message: str) -> str:
+    return message.lower().replace("’", "'")
+
+
 def is_bot_challenge_error(message: str) -> bool:
-    normalized = message.lower().replace("’", "'")
+    normalized = normalize_message(message)
     return "confirm you're not a bot" in normalized
 
 
 def is_dpapi_cookie_error(message: str) -> bool:
-    normalized = message.lower()
+    normalized = normalize_message(message)
     return "failed to decrypt with dpapi" in normalized
+
+
+def is_invalid_youtube_cookie_warning(message: str) -> bool:
+    return "the provided youtube account cookies are no longer valid" in message
+
+
+def is_auth_required_video_error(message: str) -> bool:
+    auth_error_markers = (
+        "private video. sign in",
+        "video unavailable. this video is private",
+        "members-only content",
+        "use --cookies-from-browser or --cookies for the authentication",
+    )
+    return any(marker in message for marker in auth_error_markers)
 
 
 def print_cookie_help(url: str, cookies_argument_used: bool) -> None:
@@ -560,6 +625,22 @@ def print_dpapi_help(url: str) -> None:
     print("\nOr use an exported cookies file with:", file=sys.stderr)
     print(
         f'  python .\\download-youtube-audio.py --cookies "C:\\path\\to\\cookies.txt" "{url}"',
+        file=sys.stderr,
+    )
+
+
+def print_stale_cookie_help(source_label: str | None) -> None:
+    source_description = source_label or "the selected cookie source"
+    print(
+        f"\nDetected stale YouTube cookies in {source_description}.",
+        file=sys.stderr,
+    )
+    print(
+        "Public items can still download, but sign-in-only or private items may be skipped.",
+        file=sys.stderr,
+    )
+    print(
+        "Sign into YouTube again in that browser profile, or refresh/export a new cookies.txt file.",
         file=sys.stderr,
     )
 
@@ -633,7 +714,7 @@ def try_auto_cookie_profiles(
     download_video: bool,
     audio_format: str,
     audio_quality: str,
-) -> tuple[int, str] | None:
+) -> tuple[DownloadResult, str] | None:
     detected_profiles = detect_browser_profiles()
     if not detected_profiles:
         return None
@@ -644,12 +725,13 @@ def try_auto_cookie_profiles(
     )
 
     failures: list[tuple[str, str]] = []
+    best_partial_result: tuple[DownloadResult, str] | None = None
 
-    for browser_name, profile_name in detected_profiles:
+    for index, (browser_name, profile_name) in enumerate(detected_profiles):
         label = format_browser_profile_label(browser_name, profile_name)
         print(f"Trying browser profile: {label}", file=sys.stderr)
         try:
-            exit_code = download_audio(
+            result = download_audio(
                 url=url,
                 output_dir=output_dir,
                 download_playlist=download_playlist,
@@ -659,7 +741,32 @@ def try_auto_cookie_profiles(
                 cookie_file=None,
                 cookies_from_browser=(browser_name, profile_name, None, None),
             )
-            return exit_code, label
+            if download_playlist and result.telemetry.has_stale_cookie_auth_failures:
+                archive_ids = load_download_archive_ids(
+                    build_download_archive_path(output_dir, download_video, audio_format)
+                )
+                resume_index, playlist_count = find_first_unfinished_playlist_index(
+                    url=url,
+                    archive_ids=archive_ids,
+                    cookie_file=None,
+                    cookies_from_browser=(browser_name, profile_name, None, None),
+                )
+                has_remaining_items = (
+                    resume_index is not None
+                    and playlist_count is not None
+                    and resume_index <= playlist_count
+                )
+                has_more_profiles = index < len(detected_profiles) - 1
+                if has_remaining_items and has_more_profiles:
+                    best_partial_result = (result, label)
+                    print(
+                        f"Detected stale YouTube cookies in {label}. "
+                        f"Trying the next browser profile from item {resume_index} of {playlist_count}...",
+                        file=sys.stderr,
+                    )
+                    continue
+
+            return result, label
         except Exception as exc:
             failures.append((label, str(exc)))
             print(f"  Failed with {label}: {exc}", file=sys.stderr)
@@ -667,6 +774,8 @@ def try_auto_cookie_profiles(
     print("\nAutomatic browser profile selection failed.", file=sys.stderr)
     for label, message in failures:
         print(f"  - {label}: {message}", file=sys.stderr)
+    if best_partial_result is not None:
+        return best_partial_result
     return None
 
 
@@ -679,12 +788,13 @@ def download_audio(
     audio_quality: str,
     cookie_file: Path | None,
     cookies_from_browser: tuple[str, str | None, str | None, str | None] | None,
-) -> int:
+) -> DownloadResult:
     import yt_dlp
     from yt_dlp.postprocessor.common import PostProcessor
 
     output_dir.mkdir(parents=True, exist_ok=True)
     successful_video_counter = SuccessfulVideoCounter()
+    telemetry = DownloadTelemetry()
     using_authenticated_source = cookie_file is not None or cookies_from_browser is not None
     download_archive = build_download_archive_path(output_dir, download_video, audio_format)
     archive_ids = load_download_archive_ids(download_archive)
@@ -704,7 +814,7 @@ def download_audio(
                 "Resume scan found no unfinished playlist items. Nothing to download.",
                 file=sys.stderr,
             )
-            return 0
+            return DownloadResult(exit_code=0, telemetry=telemetry)
 
         if resume_index is not None and resume_index > 1:
             if playlist_count:
@@ -722,6 +832,7 @@ def download_audio(
         "windowsfilenames": True,
         "continuedl": True,
         "download_archive": str(download_archive),
+        "logger": YtDlpLogger(telemetry),
     }
 
     if resume_index is not None and resume_index > 1:
@@ -763,6 +874,8 @@ def download_audio(
         ydl.add_post_processor(SuccessfulVideoPostProcessor(ydl), when="after_video")
         exit_code = ydl.download([url])
 
+    telemetry.successful_videos = successful_video_counter.successful_videos
+
     if download_playlist and using_authenticated_source:
         if successful_video_counter.successful_videos > 0:
             if exit_code != 0:
@@ -770,12 +883,12 @@ def download_audio(
                     "Playlist completed with some skipped or unavailable items.",
                     file=sys.stderr,
                 )
-            return 0
+            return DownloadResult(exit_code=0, telemetry=telemetry)
 
         if exit_code != 0:
             raise RuntimeError("No playlist items could be downloaded with the selected cookie source.")
 
-    return exit_code
+    return DownloadResult(exit_code=exit_code, telemetry=telemetry)
 
 
 def main() -> int:
@@ -800,7 +913,7 @@ def main() -> int:
     maybe_print_resume_hint(output_dir, download_video, args.audio_format, synced_count)
 
     try:
-        exit_code = download_audio(
+        result = download_audio(
             url=url,
             output_dir=output_dir,
             download_playlist=download_playlist,
@@ -810,6 +923,7 @@ def main() -> int:
             cookie_file=cookie_file,
             cookies_from_browser=args.cookies_from_browser,
         )
+        exit_code = result.exit_code
     except KeyboardInterrupt:
         print("\nDownload cancelled.", file=sys.stderr)
         return 130
@@ -829,7 +943,10 @@ def main() -> int:
                 audio_quality=args.audio_quality,
             )
             if auto_cookie_result is not None:
-                exit_code, used_profile = auto_cookie_result
+                result, used_profile = auto_cookie_result
+                exit_code = result.exit_code
+                if result.telemetry.has_stale_cookie_auth_failures:
+                    print_stale_cookie_help(used_profile)
                 print(f"Used browser profile: {used_profile}")
                 print(f"Saved {saved_media_label} to: {output_dir}")
                 return exit_code
@@ -840,6 +957,15 @@ def main() -> int:
         elif is_bot_challenge_error(message):
             print_cookie_help(url, cookie_file is not None or args.cookies_from_browser is not None)
         return 1
+
+    if result.telemetry.has_stale_cookie_auth_failures:
+        source_label = None
+        if args.cookies_from_browser is not None:
+            browser_name, profile_name, _, _ = args.cookies_from_browser
+            source_label = format_browser_profile_label(browser_name, profile_name or "default")
+        elif cookie_file is not None:
+            source_label = str(cookie_file)
+        print_stale_cookie_help(source_label)
 
     print(f"Saved {saved_media_label} to: {output_dir}")
     return exit_code

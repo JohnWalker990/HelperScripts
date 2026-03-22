@@ -144,6 +144,7 @@ python download-youtube-audio.py --cookies "C:/path/to/cookies.txt" "<youtube-ur
 ```
 
 If `--cookies-from-browser edge:...` or `chrome:...` fails with a DPAPI decryption error on Windows, use a Firefox profile or an exported `cookies.txt` file instead.
+If a detected browser profile has stale or rotated YouTube cookies, the script warns once, can try the next detected profile for the remaining playlist items, and tells you to refresh that browser login or cookies export.
 
 ---
 
