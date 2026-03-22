@@ -129,13 +129,14 @@ When you paste a playlist link in an interactive terminal session, the script ca
 2. Ask whether to download audio-only or full video.
 3. Download the selected result in best available quality.
 
-When a playlist is downloaded with an authenticated browser profile or cookies, unavailable/private items are skipped and the rest of the playlist continues.
+When a playlist is downloaded, any unavailable/private/blocked item is skipped and the script continues with the rest of the playlist instead of aborting the full run.
 When you rerun the same playlist into the same output folder and mode, the script scans the playlist against its resume archive and starts at the first unfinished item instead of restarting from item 1.
 Existing files already present in the output folder are also added to the resume archive automatically, so older partial runs can be continued without starting from the beginning.
+If the first detected browser profile still hits sign-in or bot-check restrictions on some remaining playlist items, the script can continue with the next detected profile automatically.
 
 ### Bot Check
 
-If YouTube responds with "Sign in to confirm you're not a bot", the script now automatically retries with detected local browser profiles. You can still force a specific profile or an exported cookies file manually:
+By default, the script now starts with detected local browser profiles instead of using a guest session. You can still force a specific profile or an exported cookies file manually:
 
 ```bash
 python download-youtube-audio.py --list-browser-profiles
@@ -144,7 +145,8 @@ python download-youtube-audio.py --cookies "C:/path/to/cookies.txt" "<youtube-ur
 ```
 
 If `--cookies-from-browser edge:...` or `chrome:...` fails with a DPAPI decryption error on Windows, use a Firefox profile or an exported `cookies.txt` file instead.
-If a detected browser profile has stale or rotated YouTube cookies, the script warns once, can try the next detected profile for the remaining playlist items, and tells you to refresh that browser login or cookies export.
+If a detected browser profile has stale or rotated YouTube cookies, the script warns once and tells you to refresh that browser login or cookies export.
+For YouTube challenge solving, the script looks for `node`, `bun`, `deno`, or `qjs`. On Windows it also searches common local `node.exe` locations such as `nvm` and Playwright installs when `node` is not already in `PATH`.
 
 ---
 
