@@ -1,9 +1,10 @@
 # README – HelperScripts
 
-Welcome to the **HelperScripts** repository! This repository contains small scripts that help with everyday tasks or can be useful for various workflows. Currently, it includes two scripts, both licensed under the [GNU General Public License v3.0 (GPL-3.0)](https://www.gnu.org/licenses/gpl-3.0.en.html):
+Welcome to the **HelperScripts** repository! This repository contains small scripts that help with everyday tasks or can be useful for various workflows. Currently, it includes three scripts, all licensed under the [GNU General Public License v3.0 (GPL-3.0)](https://www.gnu.org/licenses/gpl-3.0.en.html):
 
 1. [**generate_tree.py**](#generate_treepy)
 2. [**project-sum.py**](#project-sumpy)
+3. [**download-youtube-audio.py**](#download-youtube-audiopy)
 
 ---
 
@@ -62,6 +63,80 @@ This script recursively collects files of specified extensions (e.g., `.cs`, `.p
    - The script prints the aggregated text of all processed files to the console.  
    - If `pyperclip` is installed, the script also copies the text to your clipboard.
    
+---
+
+## download-youtube-audio.py
+
+This script downloads a YouTube URL in two modes:
+- By default, it downloads audio-only and converts it to high-quality `mp3`.
+- With `--video`, it downloads the full video in the best available quality and saves it as `mp4` for broad playback compatibility.
+
+If you paste a playlist-style link interactively, the script can ask whether you want the whole playlist and whether you want audio-only or full video. For non-interactive runs, watch URLs with `&list=...` still default to the current video only, while pure playlist URLs default to the full playlist.
+
+### Requirements
+
+- Python package: `yt-dlp`
+- `ffmpeg` and `ffprobe` available in your `PATH`
+
+Install `yt-dlp` with:
+
+```bash
+python -m pip install --user yt-dlp
+```
+
+### Usage
+
+1. **Run the script**:
+   ```bash
+   python download-youtube-audio.py <youtube-url>
+   ```
+   - If you omit `<youtube-url>`, the script prompts you to paste one.
+
+2. **Optional flags**:
+   - `-o, --output-dir`: Choose where the downloaded files are saved.
+   - `--video`: Download the full video in best available quality as `mp4`.
+   - `--audio-only`: Force audio-only mode.
+   - `--playlist`: Download the full playlist instead of only the current video.
+   - `--single`: Force a single-video download when the URL also contains playlist information.
+   - `--audio-format`: Convert the extracted audio to a specific format such as `mp3`, `m4a`, or `flac`. Default: `mp3`.
+   - `--cookies-from-browser`: Reuse cookies from a local browser profile such as `edge:Default` when YouTube asks you to sign in.
+   - `--cookies`: Use an exported `cookies.txt` file instead.
+   - `--list-browser-profiles`: Show detected local profiles you can pass to `--cookies-from-browser`.
+
+3. **Examples**:
+   ```bash
+   python download-youtube-audio.py https://www.youtube.com/watch?v=BaW_jenozKc
+   python download-youtube-audio.py "https://www.youtube.com/watch?v=abc123&list=playlist123"
+   python download-youtube-audio.py --video https://www.youtube.com/watch?v=BaW_jenozKc
+   python download-youtube-audio.py --cookies-from-browser edge:Default https://www.youtube.com/watch?v=BaW_jenozKc
+   python download-youtube-audio.py -o D:/Music https://youtu.be/BaW_jenozKc
+   python download-youtube-audio.py --playlist https://www.youtube.com/playlist?list=...
+   ```
+
+### Interactive Playlist Flow
+
+When you paste a playlist link in an interactive terminal session, the script can do this:
+
+1. Ask whether to download the whole playlist.
+2. Ask whether to download audio-only or full video.
+3. Download the selected result in best available quality.
+
+When a playlist is downloaded with an authenticated browser profile or cookies, unavailable/private items are skipped and the rest of the playlist continues.
+When you rerun the same playlist into the same output folder and mode, the script scans the playlist against its resume archive and starts at the first unfinished item instead of restarting from item 1.
+Existing files already present in the output folder are also added to the resume archive automatically, so older partial runs can be continued without starting from the beginning.
+
+### Bot Check
+
+If YouTube responds with "Sign in to confirm you're not a bot", the script now automatically retries with detected local browser profiles. You can still force a specific profile or an exported cookies file manually:
+
+```bash
+python download-youtube-audio.py --list-browser-profiles
+python download-youtube-audio.py --cookies-from-browser edge:Default "<youtube-url>"
+python download-youtube-audio.py --cookies "C:/path/to/cookies.txt" "<youtube-url>"
+```
+
+If `--cookies-from-browser edge:...` or `chrome:...` fails with a DPAPI decryption error on Windows, use a Firefox profile or an exported `cookies.txt` file instead.
+
 ---
 
 ## License
